@@ -6,11 +6,83 @@ const jwt = require('jsonwebtoken');
 const db = require('../../db');
 const admin = require('firebase-admin');
 
-//Funcion de registro que recibe en el cuerpo los datos para almacenar en la base de datos
+exports.registerAndUpdate = async (req, res) => {
+  const { email, password, username, rol, accion, userId } = req.body;
+
+  // Validar que los campos no vengan vacios yq ue si la accion es un registro nuevo es obligatorio la contrasena
+  if (!email || !username || !rol || (accion === 'add' && !password)) {
+    return res.status(400).json({ error: 'Campos requeridos' });
+  }
+
+  try {
+    if (accion === 'update') {
+      // Si la acción es update, actualizamos el usuario existente
+      //userId es el usuario que se va a actualizar
+      const userRef = db.collection('users').doc(userId);
+
+      const userDoc = await userRef.get();
+      //Validar si existe en la base de datos
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: 'Usuario no encontrado'});
+      }
+
+      // Actualizamos los campos de usuario
+      const updatedUser = {
+        email: email,
+        username: username,
+        rol: db.collection('roles').doc(rol), 
+      };
+
+      // Si la contraseña es proporcionada en el update, se encripta y se anade al doc
+      if (password) {
+        updatedUser.password = await bcrypt.hash(password, 10);
+      }
+
+      await userRef.update(updatedUser);
+
+      // Respuesta de éxito al front
+      res.status(200).json({
+        message: 'Usuario actualizado exitosamente',
+      });
+    } else {
+      // Si la acción es add (Agregar),se realiza la creación del nuevo usuario
+      // Encriptar la contraseña
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Referencia al rol de la colección de roles
+      const roleRef = db.collection('roles').doc(rol);
+
+      // Crear el documento del nuevo usuario
+      const userRef = db.collection('users').doc();
+      await userRef.set({
+        email: email,
+        password: hashedPassword,
+        username: username,
+        rol: roleRef,
+        last_login: admin.firestore.Timestamp.now(),
+      });
+
+      // Respuesta de éxito al front para creación de usuario
+      res.status(201).json({
+        message: 'Usuario creado exitosamente',
+      });
+    }
+  } catch (error) {
+    console.error('Error al procesar solicitud:', error);
+    res.status(500).json({ error: 'Error al procesar la solicitud' });
+  }
+};
+
+
+
+
+//Funcion de registro que recibe en el cuerpo los datos para almacenar en la base de datos (NO FUNCIONAL, SOLO SIRVE PARA REGISTRO)
 exports.register = async (req, res) => {
-  const { email, password, username } = req.body;
-  const rol = 'zvr5vVJCi93pjjzfF53l' // Se asigna por defecto el common user
-  if (!email || !password || !username) { //Se valida que los campos contengan informacion
+  const { email, password, username, rol, accion } = req.body;
+  //Si la accion es update, no sera necesario un password
+  const req_password = accion === 'update' ? 'no' : password; 
+
+  if (!email || (accion !== 'update' && !req_password) || !username || !rol) { //Se valida que los campos contengan informacion
     return res.status(400).json({ error: 'Campos requeridos' });
   }
 
@@ -66,7 +138,8 @@ exports.login = async (req, res) => {
     // Buscar usuario en la base de datos por email
     const userSnapshot = await db.collection('users').where('email', '==', email).get();
     if (userSnapshot.empty) {
-      return res.status(401).json({ error: 'Usuario no encontrado' });//Si no encontramos alguno regresamos un mensaje de error
+      //Si no encontramos alguno regresamos un mensaje de error
+      return res.status(401).json({ error: 'Usuario no encontrado' });
     }
 
     const user = userSnapshot.docs[0].data();

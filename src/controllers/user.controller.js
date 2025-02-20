@@ -33,12 +33,13 @@ exports.getAllUsers = async (req, res) => {
 
     // Crear un array de usuarios con los datos de cada documento
     const users = usersSn.docs.map(doc => {
+      console.log(doc);
       const userData = doc.data();
       return {
-        id: doc.id, // ID del documento
+        id: doc.id, 
         email: userData.email,
         username: userData.username,
-        rol: userData.rol, // Aquí se puede expandir con los datos de rol
+        rol: userData.rol, 
         last_login: userData.last_login,
       };
     });
